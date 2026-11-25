@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Пепел и кость</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap">
+<style>
+:root{--bg:#171b1a;--panel:#1f2523;--line:#333c39;--bone:#d9d2bf;--dim:#8b9390;--blood:#a33a34;--gold:#c9a95a;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--bone);font:16px/1.6 'IM Fell English',Georgia,serif;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0)}
+button,input,select,textarea{font:inherit;color:inherit}
+.ui{font-family:system-ui,-apple-system,sans-serif;font-size:14px}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 14px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.name{font-size:20px;margin-right:auto}
+.bar{flex:1 1 120px;height:8px;background:#0f1211;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--blood);transition:width .4s}
+.meta{color:var(--dim)}
+details{margin-top:6px}summary{cursor:pointer;color:var(--dim)}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:8px 0;text-align:center}
+.stats div{border:1px solid var(--line);border-radius:4px;padding:2px}
+#log{flex:1;overflow-y:auto;padding:16px 14px;max-width:720px;width:100%;margin:0 auto}
+#log p{margin:0 0 14px}
+.me{color:var(--dim);font-style:italic;border-left:2px solid var(--line);padding-left:10px}
+.dice{font-family:system-ui,sans-serif;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
+.dice b{font-size:18px}
+.critfail{border-color:var(--blood);color:#e08a84}.crit{border-color:var(--gold);color:var(--gold)}.cost{color:#d1b27a}.fail{color:#d98e88}
+.sys{color:var(--dim);font-family:system-ui,sans-serif;font-size:14px}
+form.act{display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0));background:var(--panel);border-top:1px solid var(--line);max-width:100%}
+form.act input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:10px}
+.btn{background:var(--blood);border:0;border-radius:4px;padding:10px 16px;cursor:pointer;color:#fff}
+.btn.g{background:transparent;border:1px solid var(--line);color:var(--dim)}
+.btn:disabled{opacity:.5}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#setup{max-width:480px;margin:auto;padding:24px 16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+#setup h1{margin:0;font-size:32px;font-weight:400}
+#setup label{display:flex;flex-direction:column;gap:4px;color:var(--dim)}
+#setup input,#setup select,#setup textarea{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px}
+dialog{background:var(--panel);color:var(--bone);border:1px solid var(--line);border-radius:6px;width:min(92vw,560px);padding:16px}
+dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:10px;margin:8px 0}
+dialog .row{justify-content:space-between}
+.hide{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<section id="setup" class="ui">
+  <h1 style="font-family:'IM Fell English',serif">Пепел и кость</h1>
+  <span class="meta">Тёмное фэнтези. Кубы и состояние считает код, Gemini только рассказывает.</span>
+  <label>Ключ Gemini API (хранится только в этом браузере)<input id="key" type="password" autocomplete="off" placeholder="AIza..."></label>
+  <label>Модель<input id="model" value="gemini-2.5-flash"></label>
+  <label>Имя героя<input id="hname" placeholder="Например, Ворн"></label>
+  <label>Класс<select id="hcls"></select></label>
+  <label>Внешность и характер<textarea id="hlook" rows="3" placeholder="Шрам через бровь, угрюмый, не доверяет магам"></textarea></label>
+  <label>Стартовая сцена<textarea id="hscene" rows="2">Я просыпаюсь в канаве у дороги, не помня, как сюда попал. Рядом догорает чей-то обоз.</textarea></label>
+  <button class="btn g" id="lore2" type="button">Лор мира (необязательно)</button>
+  <button class="btn" id="start" type="button">Начать игру</button>
+</section>
+
+<main id="game" class="hide" style="display:flex;flex-direction:column;flex:1;min-height:0">
+  <header class="ui">
+    <div class="row"><span class="name" id="gname" style="font-family:'IM Fell English',serif"></span>
+      <div class="bar" title="Здоровье"><i id="hpbar"></i></div><span id="hptxt"></span>
+      <span class="meta" id="dayinfo"></span>
+      <button class="btn g" id="lore1" type="button">Лор</button><button class="btn g" id="menu" type="button">Сброс</button></div>
+    <details><summary>Лист героя</summary>
+      <div class="stats" id="stats"></div>
+      <div id="inv" class="meta"></div></details>
+  </header>
+  <div id="log" aria-live="polite"></div>
+  <form class="act ui" id="form">
+    <button class="btn g" id="travel" type="button">В путь</button>
+    <input id="inp" autocomplete="off" placeholder="Что делаешь?">
+    <button class="btn" id="send">Ход</button>
+  </form>
+</main>
+
+<dialog id="loreD" class="ui">
+  <b>Лор мира</b>
+  <div class="meta">Вставь свой текст или загрузи файл .txt / .md. Мастер будет опираться на него в каждом ходу. Лор хранится только в твоём браузере. Для длинных текстов разделяй темы пустой строкой.</div>
+  <textarea id="loreTxt" rows="14" placeholder="Мир, города, фракции, боги, важные NPC..."></textarea>
+  <div class="row"><label class="btn g" style="cursor:pointer">Загрузить файл<input id="loreFile" type="file" accept=".txt,.md,text/plain" class="hide"></label>
+  <span class="meta" id="loreCnt"></span></div>
+  <div class="row" style="margin-top:10px"><button class="btn g" id="loreX" type="button">Закрыть</button><button class="btn g" id="loreClr" type="button">Очистить</button><button class="btn" id="loreOk" type="button">Сохранить</button></div>
+</dialog>
+<script>
+const $=s=>document.querySelector(s);
+const STATS=['СИЛ','ЛОВ','ВЫН','ИНТ','МУД','ХАР'];
+const CLASSES={
+  'Воин':{s:[3,1,2,0,0,-1],hp:24,inv:['Меч','Кожаный доспех','Фляга']},
+  'Следопыт':{s:[1,3,1,0,2,-1],hp:20,inv:['Лук','Кинжал','Верёвка']},
+  'Вор':{s:[-1,3,0,2,0,1],hp:18,inv:['Два кинжала','Отмычки','Тёмный плащ']},
+  'Колдун':{s:[-1,0,1,3,2,0],hp:16,inv:['Посох','Книга заклинаний','Нож']}
+};
+const TIERS={
+  critfail:['Критический провал','Реальная потеря: сломалось оружие, потерян предмет или тяжёлая рана. Действие проваливается жестоко.'],
+  fail:['Провал','Не вышло, ситуация ухудшилась.'],
+  cost:['Успех с ценой','Получилось, но с осложнением или потерей.'],
+  success:['Успех','Получилось чисто.'],
+  strong:['Сильный успех','Получилось с бонусом: лишняя выгода или преимущество.'],
+  crit:['Критический успех','Исключительный результат, который меняет саму сцену.']
+};
+const SYS=`Ты мастер текстовой RPG для взрослой аудитории. Жанр: тёмное фэнтези, гримдарк. Мир жестокий и не щадит героя: бои грязные, раны имеют физические последствия, смерть реальна, в том числе у важных NPC. Последствия насилия описывай конкретно и без смягчений. Мир живёт сам: NPC и враги действуют по своей воле. Сексуальные сцены не описывай, делай затемнение.
+Правила: результат бросков приходит в [РЕЗУЛЬТАТ], ты его не выбираешь и не меняешь, а описываешь. Состояние героя и день приходят в [СОСТОЯНИЕ], внешность и характер бери оттуда. Время в пути идёт только по [ДЕНЬ], не перескакивай дни и не завершай путь раньше срока. Не решай за игрока, что он делает и говорит. Заканчивай ход ситуацией, ждущей действия. Пиши по-русски.`;
+let S=null, busy=false;
+const K=localStorage;
+function load(){try{return JSON.parse(K.getItem('dg_state'))}catch(e){return null}}
+function save(){try{K.setItem('dg_state',JSON.stringify(S))}catch(e){}}
+function die(n){const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%n+1}
+function mod(stat){return S.stats[stat]}
+function tier(roll,total,dc){
+  if(roll===1)return'critfail';if(roll===20)return'crit';
+  const d=total-dc;return d>=5?'strong':d>=0?'success':d>=-5?'cost':'fail';
+}
+async function gem(sys,contents,json){
+  const model=K.getItem('dg_model')||'gemini-2.5-flash',key=K.getItem('dg_key')||'';
+  const body={systemInstruction:{parts:[{text:sys}]},contents,generationConfig:{temperature:json?0.2:1}};
+  if(json)body.generationConfig.responseMimeType='application/json';
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',
+    {method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.error&&d.error.message||('HTTP '+r.status));
+  if(d.promptFeedback&&d.promptFeedback.blockReason)return{blocked:d.promptFeedback.blockReason};
+  const c=d.candidates&&d.candidates[0];
+  if(!c||!c.content||!c.content.parts||/SAFETY|PROHIBITED/.test(c.finishReason||''))return{blocked:(c&&c.finishReason)||'EMPTY'};
+  return{text:c.content.parts.map(p=>p.text||'').join('')};
+}
+function add(k,t){S.log.push({k,t});if(S.log.length>200)S.log.shift()}
+function render(){
+  $('#gname').textContent=S.name+', '+S.cls;
+  $('#hpbar').style.width=Math.max(0,S.hp/S.maxHp*100)+'%';
+  $('#hptxt').textContent=S.hp+'/'+S.maxHp;
+  $('#dayinfo').textContent='День '+S.day+' · припасы '+S.supplies+(S.journey?' · путь: осталось '+S.journey.left:'');
+  $('#stats').innerHTML='';
+  STATS.forEach(n=>{const d=document.createElement('div');d.textContent=n+' '+(S.stats[n]>=0?'+':'')+S.stats[n];$('#stats').append(d)});
+  $('#inv').textContent='Инвентарь: '+(S.inv.join(', ')||'пусто');
+  $('#travel').textContent=S.journey?'Дальше':'В путь';
+  const L=$('#log');L.innerHTML='';
+  S.log.forEach(e=>{
+    if(e.k==='dm'){e.t.split(/\n\s*\n/).forEach(p=>{const x=document.createElement('p');x.textContent=p.trim();L.append(x)});return}
+    const x=document.createElement('p');x.textContent=e.t;
+    x.className=e.k==='me'?'me':e.k==='sys'?'sys':'dice '+e.k;L.append(x);
+  });
+  L.scrollTop=L.scrollHeight;
+}
+function loreCtx(a){
+  const L=(K.getItem('dg_lore')||'').trim();if(!L)return'';
+  let t=L;
+  if(L.length>8000){
+    const bl=L.split(/\n\s*\n/),head=L.slice(0,1500);
+    const rec=(a+' '+S.hist.slice(-6).map(h=>h.t).join(' ')).toLowerCase();
+    const w=[...new Set(rec.match(/[а-яёa-z]{4,}/g)||[])].map(x=>x.slice(0,5));
+    const sc=bl.map(b=>{const l=b.toLowerCase();return[w.filter(x=>l.includes(x)).length,b]}).filter(x=>x[0]>0).sort((p,q)=>q[0]-p[0]);
+    let out=head,len=head.length;
+    for(const[,b]of sc){if(len+b.length>7500)continue;out+='\n\n'+b;len+=b.length}
+    t=out;
+  }
+  return '\n\n[ЛОР МИРА. Имеет приоритет над твоими выдумками, не противоречь ему. Чего в нём нет, придумывай осторожно и в духе мира]\n'+t;
+}
+function ctx(){
+  return '[СОСТОЯНИЕ] '+JSON.stringify({имя:S.name,класс:S.cls,внешность:S.look,hp:S.hp+'/'+S.maxHp,характеристики:S.stats,инвентарь:S.inv,припасы:S.supplies})+
+    '\n[СЮЖЕТ] '+(S.events.slice(-15).join('; ')||'начало игры')+'\n[ДЕНЬ] '+S.day;
+}
+async function turn(action){
+  if(busy||!action)return;busy=true;$('#send').disabled=true;
+  try{
+    let dayTxt='',roll='';
+    if(S.journey){
+      S.day++;S.supplies=Math.max(0,S.supplies-1);S.journey.left--;
+      const r=die(100),ev=r<=60?'тихий день':r<=85?'мелкая встреча или осложнение':'серьёзное событие';
+      dayTxt='\n[ДЕНЬ ПУТИ] д100='+r+': '+ev+'. Осталось дней пути: '+S.journey.left+(S.journey.left<=0?' (это последний день, герой прибывает)':'');
+      add('sys','День '+S.day+' · д100: '+r+' · '+ev);
+      if(S.supplies===0){S.hp-=1;add('sys','Припасов нет, голод отнимает 1 HP')}
+    }
+    const cl=await gem('Ты арбитр правил RPG. По действию игрока реши, нужна ли проверка. Проверка нужна, только если исход неочевиден и есть риск. Разговор, осмотр без риска и простые действия: false. Верни JSON {"check":boolean,"stat":"СИЛ|ЛОВ|ВЫН|ИНТ|МУД|ХАР","dc":10|15|20,"dmg":"d4|d6|d8|d12|none","foe":"d4|d6|d8|d12|none","why":"коротко"}. dc: лёгкое 10, среднее 15, трудное 20. dmg: кубик урона героя, если действие это атака или вредящее заклинание (кинжал d4, лук и посох d6, меч d8, двуручное оружие d12), иначе none. foe: кубик урона по герою, если при неудаче противник может ударить в ответ (слабый d4, обычный d6, сильный d8, чудовище d12), иначе none.',
+      [{role:'user',parts:[{text:ctx()+'\n[ДЕЙСТВИЕ] '+action}]}],true);
+    let rr=null;
+    if(cl.text){try{const j=JSON.parse(cl.text.replace(/```json|```/g,''));
+      if(j.check&&STATS.includes(j.stat)){
+        const n=die(20),m=mod(j.stat),dc=[10,15,20].includes(j.dc)?j.dc:15,t=tier(n,n+m,dc);
+        rr={n,m,dc,t,stat:j.stat};
+        add(t,'Д20: '+n+(m>=0?' + ':' − ')+Math.abs(m)+' ('+j.stat+') = '+(n+m)+' против '+dc+' → '+TIERS[t][0]);
+        roll='\n[РЕЗУЛЬТАТ] Проверка '+j.stat+': '+TIERS[t][0]+'. '+TIERS[t][1];
+        const D=x=>/^d(4|6|8|12)$/.test(x)?+x.slice(1):0,dd=D(j.dmg),fd=D(j.foe);
+        if(dd&&['cost','success','strong','crit'].includes(t)){
+          const a=die(dd),b=t==='crit'?die(dd):0,tot=Math.max(1,a+b+m);
+          add('sys','Урон героя (d'+dd+(b?'×2':'')+'): '+a+(b?' + '+b:'')+(m>=0?' + ':' − ')+Math.abs(m)+' = '+tot);
+          roll+='\n[УРОН ГЕРОЯ ПО ЦЕЛИ] '+tot+' (число задано кодом, оцени, насколько это тяжело для цели)';
+        }
+        if(fd&&['critfail','fail','cost'].includes(t)){
+          let f=die(fd)+(t==='critfail'?die(fd):0);if(t==='cost')f=Math.ceil(f/2);
+          S.hp-=f;add('critfail','Урон по герою (d'+fd+'): '+f);
+          roll+='\n[УРОН ГЕРОЮ] '+f+' (уже вычтен из HP кодом)';
+        }
+      }}catch(e){}}
+    const sysL=SYS+loreCtx(action);
+    const msgs=S.hist.slice(-10).map(h=>({role:h.r,parts:[{text:h.t}]}));
+    const tail='\nОпиши последствия хода (до 150 слов). Урон из [УРОН ...] уже учтён кодом, не повторяй его в hp_delta (там только лечение и прочие изменения). Затем на новой строке ###JSON и объект без пояснений: {"hp_delta":число,"add_items":[],"remove_items":[],"event":"короткая запись о главном событии или пусто"}';
+    const mk=extra=>msgs.concat([{role:'user',parts:[{text:ctx()+dayTxt+roll+'\n[ДЕЙСТВИЕ ИГРОКА] '+action+tail+(extra||'')}]}]);
+    let res=await gem(sysL,mk());
+    if(res.blocked)res=await gem(sysL,mk('\nЕсли сцена слишком графична, опиши исход сдержаннее, но сохрани жёсткость мира.'));
+    if(res.blocked){add('sys','Модель отказалась отвечать ('+res.blocked+'). Сформулируй действие иначе.');if(S.journey&&dayTxt){/* день уже прошёл */}render();save();return}
+    const parts=res.text.split('###JSON');const story=parts[0].trim();let ch={};
+    try{ch=JSON.parse((parts[1]||'{}').replace(/```json|```/g,'').trim())}catch(e){}
+    add('me',action);add('dm',story);
+    S.hist.push({r:'user',t:action},{r:'model',t:story});if(S.hist.length>20)S.hist=S.hist.slice(-20);
+    S.hp=Math.min(S.maxHp,S.hp+(Number(ch.hp_delta)||0));
+    (ch.add_items||[]).forEach(i=>S.inv.push(String(i)));
+    (ch.remove_items||[]).forEach(i=>{const x=S.inv.indexOf(i);if(x>-1)S.inv.splice(x,1)});
+    if(ch.event)S.events.push(S.day+'д: '+ch.event);
+    if(S.journey&&S.journey.left<=0){S.journey=null;add('sys','Путь окончен.')}
+    if(S.hp<=0)add('sys','Герой погиб. Нажми «Сброс», чтобы начать заново.');
+    render();save();
+  }catch(e){add('sys','Ошибка: '+e.message);render()}
+  finally{busy=false;$('#send').disabled=false}
+}
+function boot(){
+  $('#setup').classList.toggle('hide',!!S);$('#game').classList.toggle('hide',!S);
+  if(S)render();
+}
+Object.keys(CLASSES).forEach(c=>{const o=document.createElement('option');o.textContent=c;$('#hcls').append(o)});
+$('#key').value=K.getItem('dg_key')||'';
+$('#model').value=K.getItem('dg_model')||'gemini-2.5-flash';
+$('#start').onclick=()=>{
+  const key=$('#key').value.trim();if(!key){alert('Нужен ключ Gemini API');return}
+  K.setItem('dg_key',key);K.setItem('dg_model',$('#model').value.trim()||'gemini-2.5-flash');
+  const c=CLASSES[$('#hcls').value],stats={};STATS.forEach((n,i)=>stats[n]=c.s[i]);
+  S={name:$('#hname').value.trim()||'Безымянный',cls:$('#hcls').value,look:$('#hlook').value.trim(),stats,hp:c.hp,maxHp:c.hp,inv:[...c.inv],day:1,supplies:5,journey:null,events:[],hist:[],log:[]};
+  boot();turn($('#hscene').value.trim()||'Игра начинается.');
+};
+$('#form').onsubmit=e=>{e.preventDefault();const v=$('#inp').value.trim();$('#inp').value='';
+  const m=v.match(/^\/(\d*)d(\d+)$/i);
+  if(m){const c=Math.min(+m[1]||1,10),n=Math.max(2,Math.min(+m[2],1000)),r=[...Array(c)].map(()=>die(n));
+    add('dice','Бросок '+c+'d'+n+': '+r.join(', ')+(c>1?' = '+r.reduce((a,b)=>a+b):''));render();save();return}
+  turn(v)};
+$('#travel').onclick=()=>{
+  if(S.journey){turn('Иду дальше.');return}
+  const n=parseInt(prompt('Сколько дней пути?','10'),10);if(!n||n<1)return;
+  S.journey={left:n};save();const d=prompt('Куда и как идёшь?','Иду по дороге на север');if(d)turn(d);
+};
+$('#menu').onclick=()=>{if(confirm('Стереть сохранение и начать заново?')){K.removeItem('dg_state');S=null;boot()}};
+const openLore=()=>{$('#loreTxt').value=K.getItem('dg_lore')||'';cnt();$('#loreD').showModal()};
+const cnt=()=>{$('#loreCnt').textContent=$('#loreTxt').value.length+' символов'};
+$('#lore1').onclick=openLore;$('#lore2').onclick=openLore;
+$('#loreTxt').oninput=cnt;
+$('#loreX').onclick=()=>$('#loreD').close();
+$('#loreClr').onclick=()=>{$('#loreTxt').value='';cnt()};
+$('#loreOk').onclick=()=>{
+  const v=$('#loreTxt').value.trim().slice(0,200000);
+  try{v?K.setItem('dg_lore',v):K.removeItem('dg_lore');$('#loreD').close()}catch(e){alert('Не удалось сохранить, текст слишком большой')}
+};
+$('#loreFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=()=>{$('#loreTxt').value=String(r.result).slice(0,200000);cnt()};r.readAsText(f);e.target.value='';
+};
+S=load();boot();
+</script>
+</body>
+</html>
